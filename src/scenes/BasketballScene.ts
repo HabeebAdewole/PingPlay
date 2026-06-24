@@ -9,7 +9,6 @@ const GRAVITY = 620
 export class BasketballScene extends Phaser.Scene {
   private ballGroup!: Phaser.Physics.Arcade.Group
   private currentBall!: Phaser.GameObjects.Image
-  private scoreZone!: Phaser.GameObjects.Zone
   private trajectoryGfx!: Phaser.GameObjects.Graphics
   private hoopImage!: Phaser.GameObjects.Image
 
@@ -47,27 +46,12 @@ export class BasketballScene extends Phaser.Scene {
     this.ballGroup = this.physics.add.group()
     this.spawnBall()
 
-    // Score zone — sits at rim center, wide enough to be forgiving
-    this.scoreZone = this.add.zone(this.hoopX, this.hoopY + 6, 72, 20)
-    this.physics.add.existing(this.scoreZone, true)
-
-    this.physics.add.overlap(this.ballGroup, this.scoreZone, (ballObj) => {
-      const ball = ballObj as Phaser.GameObjects.Image
-      const canScore = ball.getData('canScore') as boolean
-      const passedAboveRim = ball.getData('passedAboveRim') as boolean
-      const body = ball.body as Phaser.Physics.Arcade.Body
-
-      if (canScore && passedAboveRim && body.velocity.y > 20) {
-        ball.setData('canScore', false)
-        this.onScore(ball)
-      }
-    })
-
     this.trajectoryGfx = this.add.graphics()
 
     this.input.on('pointerdown', this.onDown, this)
     this.input.on('pointermove', this.onMove, this)
     this.input.on('pointerup', this.onUp, this)
+
   }
 
   private spawnBall() {
@@ -230,8 +214,23 @@ export class BasketballScene extends Phaser.Scene {
       const ball = b as Phaser.GameObjects.Image
       if (ball === this.currentBall) return
 
-      // Mark when ball reaches rim height so it's coming downward through hoop
-      if (ball.y <= this.hoopY + 20) ball.setData('passedAboveRim', true)
+      const body = ball.body as Phaser.Physics.Arcade.Body
+
+      // Mark when ball has risen above the rim
+      if (ball.y <= this.hoopY + 15 && !ball.getData('passedAboveRim')) {
+        ball.setData('passedAboveRim', true)
+      }
+
+      // Geometric score check — no physics zone needed
+      const dx = Math.abs(ball.x - this.hoopX)
+      const dy = ball.y - this.hoopY  // positive = below rim
+      const canScore = ball.getData('canScore') as boolean
+      const passedAboveRim = ball.getData('passedAboveRim') as boolean
+
+      if (canScore && passedAboveRim && body.velocity.y > 50 && dx < 34 && dy > 0 && dy < 30) {
+        ball.setData('canScore', false)
+        this.onScore(ball)
+      }
 
       if (ball.y > H + 60) {
         playBounce()
