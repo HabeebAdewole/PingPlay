@@ -1,38 +1,40 @@
 import Phaser from 'phaser'
 
 const SETS = 2
-const SET_DURATION = 30 // seconds
-const DRAG_MULTIPLIER = 9
-const MAX_DRAG = 120
-const TRAJECTORY_DOTS = 12
-const RIM_COLOR = 0xe05c00
-const BALL_COLOR = 0xff6b00
-const BOARD_COLOR = 0xffffff
+const SET_DURATION = 30
+const SWIPE_MULTIPLIER = 5.5
+const MAX_SWIPE = 180
+const TRAJECTORY_DOTS = 14
+const GRAVITY = 900
 
 export class BasketballScene extends Phaser.Scene {
-  private ball!: Phaser.GameObjects.Arc
+  private ball!: Phaser.GameObjects.Graphics
+  private ballCircle!: Phaser.GameObjects.Arc
   private ballBody!: Phaser.Physics.Arcade.Body
   private scoreZone!: Phaser.GameObjects.Zone
-  private graphics!: Phaser.GameObjects.Graphics
+  private courtGraphics!: Phaser.GameObjects.Graphics
+  private overlayGraphics!: Phaser.GameObjects.Graphics
 
-  private ballStart = { x: 0, y: 0 }
+  private ballX = 0
+  private ballY = 0
   private hoopX = 0
   private hoopY = 0
-  private rimRadius = 28
+  private rimR = 32
 
   private isDragging = false
-  private dragOrigin = { x: 0, y: 0 }
+  private dragStart = { x: 0, y: 0 }
   private isInFlight = false
   private canScore = false
+  private ballPassedAboveRim = false
 
   private score = 0
   private currentSet = 1
   private timeLeft = SET_DURATION
-  private timerEvent!: Phaser.Time.TimerEvent
 
   private scoreTxt!: Phaser.GameObjects.Text
   private timerTxt!: Phaser.GameObjects.Text
   private setTxt!: Phaser.GameObjects.Text
+  private swipeHint!: Phaser.GameObjects.Text
 
   constructor() {
     super('BasketballScene')
@@ -42,41 +44,69 @@ export class BasketballScene extends Phaser.Scene {
     const W = this.scale.width
     const H = this.scale.height
 
-    this.ballStart = { x: W / 2, y: H * 0.78 }
+    this.ballX = W / 2
+    this.ballY = H * 0.80
     this.hoopX = W / 2
-    this.hoopY = H * 0.32
+    this.hoopY = H * 0.28
 
-    this.graphics = this.add.graphics()
+    this.courtGraphics = this.add.graphics()
+    this.overlayGraphics = this.add.graphics()
+
     this.drawCourt()
 
-    // Ball
-    this.ball = this.add.arc(this.ballStart.x, this.ballStart.y, 18, 0, 360, false, BALL_COLOR)
-    this.physics.add.existing(this.ball)
-    this.ballBody = this.ball.body as Phaser.Physics.Arcade.Body
-    this.ballBody.setCircle(18)
-    this.ballBody.setCollideWorldBounds(false)
+    // Ball (composite: orange circle + seam lines)
+    this.ballCircle = this.add.arc(this.ballX, this.ballY, 22, 0, 360, false, 0xff6b1a)
+    this.physics.add.existing(this.ballCircle)
+    this.ballBody = this.ballCircle.body as Phaser.Physics.Arcade.Body
+    this.ballBody.setCircle(22)
     this.ballBody.allowGravity = false
 
-    // Score zone — thin rectangle between front and back rim
-    this.scoreZone = this.add.zone(this.hoopX, this.hoopY + 4, this.rimRadius * 2 - 10, 10)
+    this.drawBallSeams()
+
+    // Score zone between rims (going downward through hoop)
+    this.scoreZone = this.add.zone(this.hoopX, this.hoopY + 6, this.rimR * 2 - 16, 12)
     this.physics.add.existing(this.scoreZone, true)
 
-    this.physics.add.overlap(this.ball, this.scoreZone, () => {
-      if (this.canScore && this.ballBody.velocity.y > 0) {
+    this.physics.add.overlap(this.ballCircle, this.scoreZone, () => {
+      if (this.canScore && this.ballBody.velocity.y > 60 && this.ballPassedAboveRim) {
         this.registerScore()
       }
     })
 
     // HUD
-    const hudStyle = { fontSize: '20px', color: '#ffffff', fontFamily: 'system-ui' }
-    this.scoreTxt = this.add.text(20, 20, 'Score: 0', { ...hudStyle, fontSize: '24px', fontStyle: 'bold' })
-    this.timerTxt = this.add.text(W / 2, 20, `${SET_DURATION}s`, { ...hudStyle, fontSize: '28px', fontStyle: 'bold' }).setOrigin(0.5, 0)
-    this.setTxt = this.add.text(W - 20, 20, `Set 1/${SETS}`, hudStyle).setOrigin(1, 0)
+    this.scoreTxt = this.add.text(24, 24, '0', {
+      fontSize: '52px', color: '#ffffff', fontFamily: 'system-ui', fontStyle: 'bold',
+    })
+    this.add.text(24, 78, 'SCORE', {
+      fontSize: '12px', color: '#ffffff80', fontFamily: 'system-ui', letterSpacing: 3,
+    })
+
+    this.timerTxt = this.add.text(W / 2, 24, `${SET_DURATION}`, {
+      fontSize: '52px', color: '#ffffff', fontFamily: 'system-ui', fontStyle: 'bold',
+    }).setOrigin(0.5, 0)
+    this.add.text(W / 2, 78, 'SECS', {
+      fontSize: '12px', color: '#ffffff80', fontFamily: 'system-ui', letterSpacing: 3,
+    }).setOrigin(0.5, 0)
+
+    this.setTxt = this.add.text(W - 24, 24, `SET ${this.currentSet}/${SETS}`, {
+      fontSize: '16px', color: '#ffffff80', fontFamily: 'system-ui', fontStyle: 'bold', letterSpacing: 1,
+    }).setOrigin(1, 0)
+
+    this.swipeHint = this.add.text(W / 2, this.ballY + 50, '↑  swipe up to shoot', {
+      fontSize: '14px', color: '#ffffff50', fontFamily: 'system-ui',
+    }).setOrigin(0.5)
+
+    this.tweens.add({
+      targets: this.swipeHint,
+      alpha: 0,
+      delay: 2500,
+      duration: 800,
+    })
 
     // Input
-    this.input.on('pointerdown', this.onPointerDown, this)
-    this.input.on('pointermove', this.onPointerMove, this)
-    this.input.on('pointerup', this.onPointerUp, this)
+    this.input.on('pointerdown', this.onDown, this)
+    this.input.on('pointermove', this.onMove, this)
+    this.input.on('pointerup', this.onUp, this)
 
     this.startTimer()
   }
@@ -84,129 +114,220 @@ export class BasketballScene extends Phaser.Scene {
   private drawCourt() {
     const W = this.scale.width
     const H = this.scale.height
-    const g = this.graphics
+    const g = this.courtGraphics
     g.clear()
 
-    // Floor
-    g.fillStyle(0x8b5e3c)
-    g.fillRect(0, H * 0.88, W, H * 0.12)
+    // Sky gradient background
+    g.fillStyle(0x0f1b35)
+    g.fillRect(0, 0, W, H)
 
-    // Floor line
-    g.lineStyle(3, 0xc8843f)
-    g.strokeRect(20, H * 0.88, W - 40, H * 0.12 - 4)
+    // Court floor (wood)
+    const floorY = H * 0.86
+    g.fillStyle(0xc17a2e)
+    g.fillRect(0, floorY, W, H - floorY)
 
-    // Backboard
-    g.fillStyle(BOARD_COLOR, 0.9)
-    g.fillRect(this.hoopX - 50, this.hoopY - 54, 100, 60)
-    g.lineStyle(3, 0xaaaaaa)
-    g.strokeRect(this.hoopX - 50, this.hoopY - 54, 100, 60)
+    // Floor planks
+    g.lineStyle(1, 0xa8621a, 0.4)
+    for (let i = 0; i < 6; i++) {
+      g.lineBetween(0, floorY + i * 16, W, floorY + i * 16)
+    }
 
-    // Inner square on backboard
-    g.lineStyle(2, 0xff4444)
-    g.strokeRect(this.hoopX - 18, this.hoopY - 36, 36, 28)
+    // Court line
+    g.lineStyle(3, 0xffe4b0, 0.8)
+    g.lineBetween(0, floorY, W, floorY)
+
+    // Three-point arc suggestion (decorative) — drawn as line segments
+    g.lineStyle(2, 0xffe4b0, 0.15)
+    const arcR = W * 0.45
+    const arcSegs = 24
+    for (let i = 0; i < arcSegs; i++) {
+      const a1 = Math.PI + (i / arcSegs) * Math.PI
+      const a2 = Math.PI + ((i + 1) / arcSegs) * Math.PI
+      g.lineBetween(
+        W / 2 + Math.cos(a1) * arcR, floorY + Math.sin(a1) * arcR,
+        W / 2 + Math.cos(a2) * arcR, floorY + Math.sin(a2) * arcR,
+      )
+    }
 
     // Pole
-    g.fillStyle(0x888888)
-    g.fillRect(this.hoopX + 50, this.hoopY - 54, 8, H * 0.88 - (this.hoopY - 54))
+    g.fillStyle(0x8899aa)
+    g.fillRect(this.hoopX + this.rimR + 10, this.hoopY - 50, 7, H * 0.86 - (this.hoopY - 50))
 
-    // Rim (front arc)
-    g.lineStyle(6, RIM_COLOR)
-    g.strokeCircle(this.hoopX, this.hoopY, this.rimRadius)
+    // Backboard
+    g.fillStyle(0xddeeff, 0.92)
+    g.fillRoundedRect(this.hoopX - 52, this.hoopY - 58, 104, 52, 4)
+    g.lineStyle(3, 0x99bbdd)
+    g.strokeRoundedRect(this.hoopX - 52, this.hoopY - 58, 104, 52, 4)
 
-    // Net lines
-    g.lineStyle(1, 0xffffff, 0.6)
-    const netTop = this.hoopY + this.rimRadius
-    const netBot = netTop + 36
-    const segments = 6
+    // Shooter's square
+    g.lineStyle(2, 0xff4444, 0.9)
+    g.strokeRect(this.hoopX - 20, this.hoopY - 42, 40, 28)
+
+    // Back rim (darker, behind)
+    g.lineStyle(7, 0xb84400)
+    g.strokeCircle(this.hoopX + this.rimR * 0.15, this.hoopY + 4, this.rimR * 0.5)
+
+    // Front rim
+    g.lineStyle(7, 0xff6600)
+    g.strokeCircle(this.hoopX, this.hoopY, this.rimR)
+
+    // Net
+    this.drawNet(g)
+  }
+
+  private drawNet(g: Phaser.GameObjects.Graphics) {
+    const netTop = this.hoopY + this.rimR - 4
+    const netBot = netTop + 44
+    const leftX = this.hoopX - this.rimR + 6
+    const rightX = this.hoopX + this.rimR - 6
+    const segments = 7
+
+    g.lineStyle(1.5, 0xffffff, 0.55)
     for (let i = 0; i <= segments; i++) {
-      const angle = (i / segments) * Math.PI
-      const topX = this.hoopX + Math.cos(Math.PI + angle) * this.rimRadius
-      const botX = this.hoopX + (i - segments / 2) * 6
-      g.lineBetween(topX, netTop, botX, netBot)
+      const t = i / segments
+      const tx = leftX + t * (rightX - leftX)
+      const bx = this.hoopX + (i - segments / 2) * 5.5
+      g.lineBetween(tx, netTop, bx, netBot)
     }
-    // Net bottom
-    g.strokeRect(this.hoopX - 18, netBot - 2, 36, 4)
+    // Horizontal net rows
+    for (let row = 1; row <= 3; row++) {
+      const ry = netTop + (row / 4) * (netBot - netTop)
+      const spread = (1 - row / 4) * (rightX - leftX) / 2
+      g.lineBetween(this.hoopX - spread, ry, this.hoopX + spread, ry)
+    }
   }
 
-  private onPointerDown(ptr: Phaser.Input.Pointer) {
+  private drawBallSeams() {
+    // Seams drawn as overlay graphics on ball position
+    const g = this.overlayGraphics
+    g.clear()
+
+    if (this.isInFlight) return
+
+    const bx = this.ballCircle.x
+    const by = this.ballCircle.y
+    const r = 22
+
+    g.lineStyle(1.5, 0x991100, 0.8)
+    // Outer circle
+    g.strokeCircle(bx, by, r)
+    // Horizontal seam
+    g.lineBetween(bx - r, by, bx + r, by)
+    // Left curved seam (approximate arc with segments)
+    const seamSegs = 10
+    for (let i = 0; i < seamSegs; i++) {
+      const a1 = Math.PI / 2 + (i / seamSegs) * Math.PI
+      const a2 = Math.PI / 2 + ((i + 1) / seamSegs) * Math.PI
+      g.lineBetween(bx - 6 + Math.cos(a1) * r * 0.7, by + Math.sin(a1) * r * 0.7,
+        bx - 6 + Math.cos(a2) * r * 0.7, by + Math.sin(a2) * r * 0.7)
+      g.lineBetween(bx + 6 - Math.cos(a1) * r * 0.7, by + Math.sin(a1) * r * 0.7,
+        bx + 6 - Math.cos(a2) * r * 0.7, by + Math.sin(a2) * r * 0.7)
+    }
+  }
+
+  private onDown(ptr: Phaser.Input.Pointer) {
     if (this.isInFlight || this.timeLeft <= 0) return
-    const dist = Phaser.Math.Distance.Between(ptr.x, ptr.y, this.ball.x, this.ball.y)
-    if (dist < 50) {
+    const dist = Phaser.Math.Distance.Between(ptr.x, ptr.y, this.ballCircle.x, this.ballCircle.y)
+    if (dist < 60) {
       this.isDragging = true
-      this.dragOrigin = { x: ptr.x, y: ptr.y }
+      this.dragStart = { x: ptr.x, y: ptr.y }
     }
   }
 
-  private onPointerMove(ptr: Phaser.Input.Pointer) {
+  private onMove(ptr: Phaser.Input.Pointer) {
     if (!this.isDragging) return
-    this.graphics.clear()
-    this.drawCourt()
-    this.drawTrajectory(ptr)
+    this.overlayGraphics.clear()
+    this.drawTrajectoryPreview(ptr)
   }
 
-  private onPointerUp(ptr: Phaser.Input.Pointer) {
+  private onUp(ptr: Phaser.Input.Pointer) {
     if (!this.isDragging) return
     this.isDragging = false
+    this.overlayGraphics.clear()
 
-    const dx = Phaser.Math.Clamp(this.dragOrigin.x - ptr.x, -MAX_DRAG, MAX_DRAG)
-    const dy = Phaser.Math.Clamp(this.dragOrigin.y - ptr.y, -MAX_DRAG, MAX_DRAG)
+    // Swipe direction = pointer moved relative to drag start
+    const dx = Phaser.Math.Clamp(ptr.x - this.dragStart.x, -MAX_SWIPE, MAX_SWIPE)
+    const dy = Phaser.Math.Clamp(ptr.y - this.dragStart.y, -MAX_SWIPE, MAX_SWIPE)
 
-    if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return
+    // Only shoot if swiped upward enough
+    if (dy > -20) return
 
-    this.graphics.clear()
-    this.drawCourt()
-
-    this.isInFlight = true
-    this.canScore = false
-    this.ballBody.allowGravity = true
-    this.ballBody.setVelocity(dx * DRAG_MULTIPLIER, dy * DRAG_MULTIPLIER)
-
-    // Allow scoring once ball is above hoop
-    this.time.delayedCall(200, () => { this.canScore = true })
+    this.shoot(dx * SWIPE_MULTIPLIER, dy * SWIPE_MULTIPLIER)
   }
 
-  private drawTrajectory(ptr: Phaser.Input.Pointer) {
-    const dx = Phaser.Math.Clamp(this.dragOrigin.x - ptr.x, -MAX_DRAG, MAX_DRAG)
-    const dy = Phaser.Math.Clamp(this.dragOrigin.y - ptr.y, -MAX_DRAG, MAX_DRAG)
-    const vx = dx * DRAG_MULTIPLIER
-    const vy = dy * DRAG_MULTIPLIER
-    const g = 900 / 1000 / 1000 // pixels per ms²
+  private shoot(vx: number, vy: number) {
+    this.isInFlight = true
+    this.canScore = false
+    this.ballPassedAboveRim = false
+    this.ballBody.allowGravity = true
+    this.ballBody.setVelocity(vx, vy)
 
-    this.graphics.fillStyle(0xffffff, 0.5)
+    this.swipeHint.setVisible(false)
+
+    // Allow scoring after ball travels a bit
+    this.time.delayedCall(300, () => { this.canScore = true })
+  }
+
+  private drawTrajectoryPreview(ptr: Phaser.Input.Pointer) {
+    const dx = Phaser.Math.Clamp(ptr.x - this.dragStart.x, -MAX_SWIPE, MAX_SWIPE)
+    const dy = Phaser.Math.Clamp(ptr.y - this.dragStart.y, -MAX_SWIPE, MAX_SWIPE)
+
+    if (dy > -20) return
+
+    const vx = dx * SWIPE_MULTIPLIER
+    const vy = dy * SWIPE_MULTIPLIER
+    const g = GRAVITY / (1000 * 1000) // px per ms²
+
+    const bx = this.ballCircle.x
+    const by = this.ballCircle.y
+
     for (let i = 1; i <= TRAJECTORY_DOTS; i++) {
-      const t = i * 80 // ms steps
-      const px = this.ball.x + vx * (t / 1000)
-      const py = this.ball.y + vy * (t / 1000) + 0.5 * g * t * t
-      const alpha = 1 - i / (TRAJECTORY_DOTS + 1)
-      this.graphics.fillStyle(0xffffff, alpha * 0.6)
-      this.graphics.fillCircle(px, py, 4 - i * 0.2)
+      const t = i * 70
+      const px = bx + vx * (t / 1000)
+      const py = by + vy * (t / 1000) + 0.5 * g * t * t
+
+      const alpha = (1 - i / (TRAJECTORY_DOTS + 1)) * 0.75
+      const size = Math.max(2, 5 - i * 0.25)
+
+      this.overlayGraphics.fillStyle(0xffffff, alpha)
+      this.overlayGraphics.fillCircle(px, py, size)
     }
 
-    // Drag line
-    this.graphics.lineStyle(2, 0xffffff, 0.3)
-    this.graphics.lineBetween(this.ball.x, this.ball.y, ptr.x, ptr.y)
+    // Swipe direction arrow on ball
+    this.overlayGraphics.lineStyle(2, 0xffffff, 0.4)
+    this.overlayGraphics.lineBetween(bx, by, bx + dx * 0.4, by + dy * 0.4)
   }
 
   private registerScore() {
     this.canScore = false
     this.score++
-    this.scoreTxt.setText(`Score: ${this.score}`)
+    this.scoreTxt.setText(`${this.score}`)
     this.game.events.emit('score_update', this.score)
-    this.showScoreFlash()
-    this.resetBall()
+    this.flashScore()
+    this.time.delayedCall(150, () => this.resetBall())
   }
 
-  private showScoreFlash() {
-    const flash = this.add.text(this.hoopX, this.hoopY - 40, '+1', {
-      fontSize: '32px', color: '#00ff88', fontStyle: 'bold', fontFamily: 'system-ui',
-    }).setOrigin(0.5)
+  private flashScore() {
+    const W = this.scale.width
+    const flash = this.add.text(W / 2, this.hoopY - 30, '+1', {
+      fontSize: '38px', color: '#00ff88', fontStyle: 'bold', fontFamily: 'system-ui',
+    }).setOrigin(0.5).setAlpha(1)
 
     this.tweens.add({
       targets: flash,
-      y: flash.y - 60,
+      y: flash.y - 70,
       alpha: 0,
-      duration: 700,
+      duration: 600,
+      ease: 'Power2',
       onComplete: () => flash.destroy(),
+    })
+
+    // Brief rim flash
+    this.tweens.add({
+      targets: this.courtGraphics,
+      alpha: 0.7,
+      yoyo: true,
+      duration: 80,
     })
   }
 
@@ -214,88 +335,99 @@ export class BasketballScene extends Phaser.Scene {
     this.isInFlight = false
     this.ballBody.allowGravity = false
     this.ballBody.setVelocity(0, 0)
-    this.ball.setPosition(this.ballStart.x, this.ballStart.y)
+    this.ballCircle.setPosition(this.ballX, this.ballY)
+    this.drawBallSeams()
   }
 
   private startTimer() {
     this.timeLeft = SET_DURATION
-    this.timerEvent = this.time.addEvent({
+    this.time.addEvent({
       delay: 1000,
       repeat: SET_DURATION - 1,
       callback: () => {
         this.timeLeft--
-        this.timerTxt.setText(`${this.timeLeft}s`)
-        if (this.timeLeft <= 5) this.timerTxt.setColor('#ff4444')
+        this.timerTxt.setText(`${this.timeLeft}`)
+        if (this.timeLeft <= 5) {
+          this.timerTxt.setColor('#ff4444')
+          this.cameras.main.shake(80, 0.003)
+        }
         if (this.timeLeft <= 0) this.endSet()
       },
     })
   }
 
   private endSet() {
-    this.input.off('pointerdown', this.onPointerDown, this)
-    this.input.off('pointermove', this.onPointerMove, this)
-    this.input.off('pointerup', this.onPointerUp, this)
+    this.input.off('pointerdown', this.onDown, this)
+    this.input.off('pointermove', this.onMove, this)
+    this.input.off('pointerup', this.onUp, this)
     this.ballBody.setVelocity(0, 0)
     this.ballBody.allowGravity = false
 
     this.game.events.emit('set_end', this.score, this.currentSet)
 
     if (this.currentSet < SETS) {
-      this.showSetEndOverlay()
+      this.showSetBreak()
     }
   }
 
-  startNextSet() {
-    this.currentSet++
-    this.setTxt.setText(`Set ${this.currentSet}/${SETS}`)
-    this.timerTxt.setColor('#ffffff')
-    this.resetBall()
-    this.input.on('pointerdown', this.onPointerDown, this)
-    this.input.on('pointermove', this.onPointerMove, this)
-    this.input.on('pointerup', this.onPointerUp, this)
-    this.startTimer()
-  }
-
-  private showSetEndOverlay() {
+  private showSetBreak() {
     const W = this.scale.width
     const H = this.scale.height
-    const overlay = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.7)
-    const txt = this.add.text(W / 2, H / 2 - 20, `Set ${this.currentSet} done!\nScore: ${this.score}`, {
-      fontSize: '28px', color: '#ffffff', fontStyle: 'bold', fontFamily: 'system-ui', align: 'center',
+
+    const bg = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.78)
+    const setLabel = this.add.text(W / 2, H / 2 - 60, `SET ${this.currentSet} DONE`, {
+      fontSize: '14px', color: '#ffffff80', fontFamily: 'system-ui', letterSpacing: 4,
     }).setOrigin(0.5)
-    const sub = this.add.text(W / 2, H / 2 + 50, 'Next set starting in 3...', {
-      fontSize: '18px', color: '#aaaaaa', fontFamily: 'system-ui',
+    const scoreTxt = this.add.text(W / 2, H / 2 - 20, `${this.score}`, {
+      fontSize: '80px', color: '#ffffff', fontStyle: 'bold', fontFamily: 'system-ui',
+    }).setOrigin(0.5)
+    const sub = this.add.text(W / 2, H / 2 + 60, 'Next set in 3', {
+      fontSize: '18px', color: '#ffffff60', fontFamily: 'system-ui',
     }).setOrigin(0.5)
 
     let count = 3
-    const countdown = this.time.addEvent({
+    this.time.addEvent({
       delay: 1000,
       repeat: 2,
       callback: () => {
         count--
-        if (count > 0) sub.setText(`Next set starting in ${count}...`)
+        if (count > 0) sub.setText(`Next set in ${count}`)
         else {
-          overlay.destroy()
-          txt.destroy()
-          sub.destroy()
-          countdown.destroy()
+          bg.destroy(); setLabel.destroy(); scoreTxt.destroy(); sub.destroy()
           this.startNextSet()
         }
       },
     })
   }
 
+  startNextSet() {
+    this.currentSet++
+    this.setTxt.setText(`SET ${this.currentSet}/${SETS}`)
+    this.timerTxt.setColor('#ffffff')
+    this.resetBall()
+    this.input.on('pointerdown', this.onDown, this)
+    this.input.on('pointermove', this.onMove, this)
+    this.input.on('pointerup', this.onUp, this)
+    this.startTimer()
+  }
+
   update() {
     if (!this.isInFlight) return
 
-    // Reset if ball goes off screen
+    const bx = this.ballCircle.x
+    const by = this.ballCircle.y
     const W = this.scale.width
     const H = this.scale.height
-    if (
-      this.ball.x < -50 || this.ball.x > W + 50 ||
-      this.ball.y > H + 50
-    ) {
+
+    // Track when ball is above rim level (needed for clean score detection)
+    if (by < this.hoopY - 10) this.ballPassedAboveRim = true
+
+    // Reset if off screen
+    if (bx < -60 || bx > W + 60 || by > H + 60) {
       this.resetBall()
     }
+
+    // Draw seams while in flight (just redraw around current position)
+    this.overlayGraphics.clear()
   }
 }
