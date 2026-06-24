@@ -1,8 +1,8 @@
 import Phaser from 'phaser'
 import { playSwish, playBounce, playShoot, playBeep, playFinalBuzzer } from '../utils/audio'
 
-const SWIPE_MULTIPLIER = 5.8
-const MAX_SWIPE = 200
+const SWIPE_MULTIPLIER = 9.5
+const MAX_SWIPE = 280
 const TRAJECTORY_DOTS = 15
 
 interface BallState {
@@ -45,9 +45,9 @@ export class BasketballScene extends Phaser.Scene {
     const H = this.scale.height
 
     this.hoopX = W / 2
-    this.hoopY = H * 0.30
+    this.hoopY = H * 0.36
     this.ballStartX = W / 2
-    this.ballStartY = H * 0.78
+    this.ballStartY = H * 0.80
 
     // Hoop — origin anchored at rim center (80/160, 80/150)
     this.hoopImage = this.add.image(this.hoopX, this.hoopY, 'hoop').setOrigin(0.5, 80 / 150)
@@ -57,14 +57,14 @@ export class BasketballScene extends Phaser.Scene {
     this.spawnBall()
 
     // Score zone
-    this.scoreZone = this.add.zone(this.hoopX, this.hoopY + 6, 50, 12)
+    this.scoreZone = this.add.zone(this.hoopX, this.hoopY + 6, 72, 18)
     this.physics.add.existing(this.scoreZone, true)
 
     this.physics.add.overlap(this.ballGroup, this.scoreZone, (ballObj) => {
       const ball = ballObj as Phaser.GameObjects.Image
       const state = this.ballStates.get(ball.name as unknown as number)
       const body = ball.body as Phaser.Physics.Arcade.Body
-      if (state?.canScore && body.velocity.y > 50 && state.passedAboveRim) {
+      if (state?.canScore && body.velocity.y > 20 && state.passedAboveRim) {
         state.canScore = false
         this.onScore(ball)
       }
@@ -138,12 +138,12 @@ export class BasketballScene extends Phaser.Scene {
     const id = Number(ball.name)
     const state = this.ballStates.get(id)
     if (state) {
-      this.time.delayedCall(220, () => { state.canScore = true })
+      this.time.delayedCall(120, () => { state.canScore = true })
     }
   }
 
   private drawTrajectory(bx: number, by: number, vx: number, vy: number) {
-    const g = 950 / (1000 * 1000)
+    const g = 620 / (1000 * 1000)
     for (let i = 1; i <= TRAJECTORY_DOTS; i++) {
       const t = i * 65
       const px = bx + vx * (t / 1000)
@@ -259,7 +259,7 @@ export class BasketballScene extends Phaser.Scene {
       const id = Number(ball.name)
       const state = this.ballStates.get(id)
 
-      if (state && ball.y < this.hoopY - 15) state.passedAboveRim = true
+      if (state && ball.y < this.hoopY + 15) state.passedAboveRim = true
 
       // Miss — play bounce when ball exits screen bottom
       if (ball.y > H + 60) {

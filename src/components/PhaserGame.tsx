@@ -22,7 +22,7 @@ export default function PhaserGame({ onBasket, onGameReady }: PhaserGameProps) {
       transparent: true,
       physics: {
         default: 'arcade',
-        arcade: { gravity: { x: 0, y: 950 }, debug: false },
+        arcade: { gravity: { x: 0, y: 620 }, debug: false },
       },
       scene: [BasketballScene],
       scale: {
