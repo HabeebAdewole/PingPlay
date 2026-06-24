@@ -64,6 +64,11 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('room_update', room)
   })
 
+  socket.on('set_score', ({ roomId, set, score }) => {
+    // Relay set score to the other player in the room
+    socket.to(roomId).emit('opponent_set_score', { set, score })
+  })
+
   socket.on('disconnecting', () => {
     const { roomId } = socket.data
     if (!roomId || !rooms[roomId]) return
