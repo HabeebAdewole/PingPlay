@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50">
+  <defs>
+    <radialGradient id="ball" cx="38%" cy="32%" r="60%">
+      <stop offset="0%" stop-color="#ffaa44"/>
+      <stop offset="55%" stop-color="#e06010"/>
+      <stop offset="100%" stop-color="#a03a00"/>
+    </radialGradient>
+    <clipPath id="clip">
+      <circle cx="25" cy="25" r="23"/>
+    </clipPath>
+  </defs>
+  <circle cx="25" cy="25" r="23" fill="url(#ball)"/>
+  <g clip-path="url(#clip)" stroke="#5a1a00" stroke-width="1.4" fill="none" opacity="0.85">
+    <!-- Horizontal seam -->
+    <line x1="2" y1="25" x2="48" y2="25"/>
+    <!-- Vertical seam -->
+    <line x1="25" y1="2" x2="25" y2="48"/>
+    <!-- Left arc seam -->
+    <path d="M25,2 Q8,25 25,48"/>
+    <!-- Right arc seam -->
+    <path d="M25,2 Q42,25 25,48"/>
+  </g>
+  <!-- Shine -->
+  <ellipse cx="18" cy="15" rx="5" ry="3" fill="white" opacity="0.18" transform="rotate(-30 18 15)"/>
+</svg>

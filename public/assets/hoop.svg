@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 150">
+  <!-- Backboard -->
+  <rect x="30" y="0" width="100" height="62" rx="3" fill="#e8f0f8" opacity="0.95"/>
+  <rect x="30" y="0" width="100" height="62" rx="3" fill="none" stroke="#aac0d8" stroke-width="2.5"/>
+  <!-- Shooter's square -->
+  <rect x="55" y="14" width="50" height="34" rx="1" fill="none" stroke="#e03030" stroke-width="2"/>
+  <!-- Pole mount -->
+  <rect x="78" y="60" width="4" height="16" fill="#8899aa"/>
+
+  <!-- Back rim (shadow/depth) -->
+  <ellipse cx="88" cy="84" rx="26" ry="8" fill="none" stroke="#b84000" stroke-width="5" opacity="0.6"/>
+  <!-- Front rim -->
+  <ellipse cx="80" cy="80" rx="32" ry="9" fill="none" stroke="#ff6600" stroke-width="6"/>
+  <!-- Rim highlight -->
+  <ellipse cx="80" cy="78" rx="30" ry="7" fill="none" stroke="#ff9944" stroke-width="1.5" opacity="0.5"/>
+
+  <!-- Net -->
+  <g stroke="white" stroke-width="1.2" opacity="0.7" fill="none">
+    <!-- Vertical net strands -->
+    <line x1="50" y1="88" x2="56" y2="128"/>
+    <line x1="58" y1="89" x2="61" y2="130"/>
+    <line x1="66" y1="89" x2="67" y2="131"/>
+    <line x1="74" y1="89" x2="74" y2="132"/>
+    <line x1="80" y1="89" x2="80" y2="132"/>
+    <line x1="86" y1="89" x2="87" y2="131"/>
+    <line x1="94" y1="89" x2="93" y2="130"/>
+    <line x1="102" y1="89" x2="99" y2="128"/>
+    <line x1="110" y1="88" x2="104" y2="126"/>
+    <!-- Horizontal net rows -->
+    <path d="M51,97 Q80,100 109,97" stroke-width="1"/>
+    <path d="M53,108 Q80,112 107,108" stroke-width="1"/>
+    <path d="M56,119 Q80,123 104,119" stroke-width="1"/>
+    <!-- Net bottom -->
+    <path d="M57,128 Q80,133 103,128" stroke-width="1.5"/>
+  </g>
+</svg>

@@ -3,11 +3,11 @@ import Phaser from 'phaser'
 import { BasketballScene } from '../scenes/BasketballScene'
 
 interface PhaserGameProps {
-  onScore: (total: number) => void
-  onSetEnd: (setScore: number, set: number) => void
+  onBasket: () => void
+  onGameReady: (game: Phaser.Game) => void
 }
 
-export default function PhaserGame({ onScore, onSetEnd }: PhaserGameProps) {
+export default function PhaserGame({ onBasket, onGameReady }: PhaserGameProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const gameRef = useRef<Phaser.Game | null>(null)
 
@@ -19,10 +19,10 @@ export default function PhaserGame({ onScore, onSetEnd }: PhaserGameProps) {
       parent: containerRef.current,
       width: window.innerWidth,
       height: window.innerHeight,
-      backgroundColor: '#1a1a2e',
+      transparent: true,
       physics: {
         default: 'arcade',
-        arcade: { gravity: { x: 0, y: 900 }, debug: false },
+        arcade: { gravity: { x: 0, y: 950 }, debug: false },
       },
       scene: [BasketballScene],
       scale: {
@@ -31,9 +31,11 @@ export default function PhaserGame({ onScore, onSetEnd }: PhaserGameProps) {
       },
     })
 
-    game.events.on('score_update', onScore)
-    game.events.on('set_end', onSetEnd)
+    game.events.on('basket', onBasket)
     gameRef.current = game
+
+    // Wait for scene to be ready before notifying parent
+    game.events.once('ready', () => onGameReady(game))
 
     return () => {
       game.destroy(true)
