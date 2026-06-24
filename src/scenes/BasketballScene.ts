@@ -1,30 +1,35 @@
 import Phaser from 'phaser'
+import { playSwish, playBounce, playShoot, playBeep, playFinalBuzzer } from '../utils/audio'
 
-const SET_DURATION = 30
 const SWIPE_MULTIPLIER = 5.8
 const MAX_SWIPE = 200
-const GRAVITY = 950
 const TRAJECTORY_DOTS = 15
 
+interface BallState {
+  canScore: boolean
+  passedAboveRim: boolean
+}
+
 export class BasketballScene extends Phaser.Scene {
-  private ball!: Phaser.GameObjects.Image
-  private ballBody!: Phaser.Physics.Arcade.Body
+  private ballGroup!: Phaser.Physics.Arcade.Group
+  private currentBall!: Phaser.GameObjects.Image
   private scoreZone!: Phaser.GameObjects.Zone
   private trajectoryGfx!: Phaser.GameObjects.Graphics
+  private hoopImage!: Phaser.GameObjects.Image
+
+  private ballStates = new Map<number, BallState>()
 
   private ballStartX = 0
   private ballStartY = 0
   private hoopX = 0
-  private hoopY = 0 // rim center Y
+  private hoopY = 0
 
   private isDragging = false
   private dragStart = { x: 0, y: 0 }
-  private isInFlight = false
-  private canScore = false
-  private passedAboveRim = false
 
+  timeLeft = 30
   currentSet = 1
-  timeLeft = SET_DURATION
+  private urgentBeepsLeft = 5
 
   constructor() {
     super('BasketballScene')
@@ -40,27 +45,28 @@ export class BasketballScene extends Phaser.Scene {
     const H = this.scale.height
 
     this.hoopX = W / 2
-    this.hoopY = H * 0.30        // rim center
+    this.hoopY = H * 0.30
     this.ballStartX = W / 2
     this.ballStartY = H * 0.78
 
-    // Hoop image — origin set so rim center (80/160, 80/150) aligns with hoopX/Y
-    this.add.image(this.hoopX, this.hoopY, 'hoop').setOrigin(0.5, 80 / 150)
+    // Hoop — origin anchored at rim center (80/160, 80/150)
+    this.hoopImage = this.add.image(this.hoopX, this.hoopY, 'hoop').setOrigin(0.5, 80 / 150)
 
-    // Ball
-    this.ball = this.add.image(this.ballStartX, this.ballStartY, 'basketball').setOrigin(0.5, 0.5)
-    this.physics.add.existing(this.ball)
-    this.ballBody = this.ball.body as Phaser.Physics.Arcade.Body
-    this.ballBody.setCircle(23, 2, 2)
-    this.ballBody.allowGravity = false
+    // Ball group
+    this.ballGroup = this.physics.add.group()
+    this.spawnBall()
 
-    // Score zone — thin strip across rim opening
-    this.scoreZone = this.add.zone(this.hoopX, this.hoopY + 5, 52, 12)
+    // Score zone
+    this.scoreZone = this.add.zone(this.hoopX, this.hoopY + 6, 50, 12)
     this.physics.add.existing(this.scoreZone, true)
 
-    this.physics.add.overlap(this.ball, this.scoreZone, () => {
-      if (this.canScore && this.ballBody.velocity.y > 50 && this.passedAboveRim) {
-        this.onScore()
+    this.physics.add.overlap(this.ballGroup, this.scoreZone, (ballObj) => {
+      const ball = ballObj as Phaser.GameObjects.Image
+      const state = this.ballStates.get(ball.name as unknown as number)
+      const body = ball.body as Phaser.Physics.Arcade.Body
+      if (state?.canScore && body.velocity.y > 50 && state.passedAboveRim) {
+        state.canScore = false
+        this.onScore(ball)
       }
     })
 
@@ -73,10 +79,27 @@ export class BasketballScene extends Phaser.Scene {
     this.input.on('pointerup', this.onUp, this)
   }
 
+  private spawnBall() {
+    const ball = this.ballGroup.create(this.ballStartX, this.ballStartY, 'basketball') as Phaser.GameObjects.Image
+    ball.setOrigin(0.5, 0.5)
+    ball.setDepth(10)
+    const body = ball.body as Phaser.Physics.Arcade.Body
+    body.setCircle(23, 2, 2)
+    body.allowGravity = false
+    body.setVelocity(0, 0)
+
+    const id = ball.x + Date.now()
+    ball.name = String(id)
+    this.ballStates.set(id, { canScore: false, passedAboveRim: false })
+
+    this.currentBall = ball
+    return ball
+  }
+
   private onDown(ptr: Phaser.Input.Pointer) {
-    if (this.isInFlight || this.timeLeft <= 0) return
-    const dist = Phaser.Math.Distance.Between(ptr.x, ptr.y, this.ball.x, this.ball.y)
-    if (dist < 64) {
+    if (this.timeLeft <= 0) return
+    const dist = Phaser.Math.Distance.Between(ptr.x, ptr.y, this.currentBall.x, this.currentBall.y)
+    if (dist < 70) {
       this.isDragging = true
       this.dragStart = { x: ptr.x, y: ptr.y }
     }
@@ -88,7 +111,7 @@ export class BasketballScene extends Phaser.Scene {
     const dx = Phaser.Math.Clamp(ptr.x - this.dragStart.x, -MAX_SWIPE, MAX_SWIPE)
     const dy = Phaser.Math.Clamp(ptr.y - this.dragStart.y, -MAX_SWIPE, MAX_SWIPE)
     if (dy > -15) return
-    this.drawTrajectory(dx * SWIPE_MULTIPLIER, dy * SWIPE_MULTIPLIER)
+    this.drawTrajectory(this.currentBall.x, this.currentBall.y, dx * SWIPE_MULTIPLIER, dy * SWIPE_MULTIPLIER)
   }
 
   private onUp(ptr: Phaser.Input.Pointer) {
@@ -100,78 +123,153 @@ export class BasketballScene extends Phaser.Scene {
     const dy = Phaser.Math.Clamp(ptr.y - this.dragStart.y, -MAX_SWIPE, MAX_SWIPE)
     if (dy > -15) return
 
-    this.shoot(dx * SWIPE_MULTIPLIER, dy * SWIPE_MULTIPLIER)
+    this.shoot(this.currentBall, dx * SWIPE_MULTIPLIER, dy * SWIPE_MULTIPLIER)
+    playShoot()
+
+    // Spawn next ball immediately
+    this.spawnBall()
   }
 
-  private shoot(vx: number, vy: number) {
-    this.isInFlight = true
-    this.canScore = false
-    this.passedAboveRim = false
-    this.ballBody.allowGravity = true
-    this.ballBody.setVelocity(vx, vy)
-    this.time.delayedCall(250, () => { this.canScore = true })
+  private shoot(ball: Phaser.GameObjects.Image, vx: number, vy: number) {
+    const body = ball.body as Phaser.Physics.Arcade.Body
+    body.allowGravity = true
+    body.setVelocity(vx, vy)
+
+    const id = Number(ball.name)
+    const state = this.ballStates.get(id)
+    if (state) {
+      this.time.delayedCall(220, () => { state.canScore = true })
+    }
   }
 
-  private drawTrajectory(vx: number, vy: number) {
-    const g = GRAVITY / (1000 * 1000)
-    const bx = this.ball.x
-    const by = this.ball.y
-
+  private drawTrajectory(bx: number, by: number, vx: number, vy: number) {
+    const g = 950 / (1000 * 1000)
     for (let i = 1; i <= TRAJECTORY_DOTS; i++) {
       const t = i * 65
       const px = bx + vx * (t / 1000)
       const py = by + vy * (t / 1000) + 0.5 * g * t * t
       const alpha = (1 - i / (TRAJECTORY_DOTS + 1)) * 0.65
-      const r = Math.max(2, 5 - i * 0.22)
+      const r = Math.max(1.5, 5 - i * 0.24)
       this.trajectoryGfx.fillStyle(0xffffff, alpha)
       this.trajectoryGfx.fillCircle(px, py, r)
     }
   }
 
-  private onScore() {
-    this.canScore = false
+  private onScore(ball: Phaser.GameObjects.Image) {
+    playSwish()
     this.game.events.emit('basket')
+    this.animateNet()
     this.showScoreFlash()
-    this.time.delayedCall(120, () => this.resetBall())
+    // Remove ball after slight delay (let it visually pass through net)
+    this.time.delayedCall(200, () => {
+      this.ballStates.delete(Number(ball.name))
+      ball.destroy()
+    })
+  }
+
+  private animateNet() {
+    // Hoop nudge down then spring back
+    this.tweens.add({
+      targets: this.hoopImage,
+      y: this.hoopImage.y + 7,
+      scaleX: 0.97,
+      duration: 70,
+      ease: 'Power2',
+      yoyo: true,
+      onComplete: () => {
+        this.tweens.add({
+          targets: this.hoopImage,
+          y: this.hoopImage.y - 2,
+          duration: 60,
+          yoyo: true,
+        })
+      },
+    })
+
+    // Particle burst at rim
+    const particles = this.add.particles(this.hoopX, this.hoopY + 8, '__DEFAULT', {
+      speed: { min: 60, max: 130 },
+      angle: { min: 60, max: 120 },
+      scale: { start: 0.4, end: 0 },
+      alpha: { start: 1, end: 0 },
+      tint: [0xff6600, 0xffffff, 0x00ff88],
+      lifespan: 350,
+      quantity: 12,
+      gravityY: 300,
+    })
+    this.time.delayedCall(400, () => particles.destroy())
   }
 
   private showScoreFlash() {
-    const flash = this.add.text(this.hoopX, this.hoopY - 40, '+1', {
-      fontSize: '36px', color: '#00ff88', fontStyle: 'bold', fontFamily: 'system-ui',
-    }).setOrigin(0.5)
+    const flash = this.add.text(this.hoopX, this.hoopY - 50, '+1', {
+      fontSize: '40px', color: '#00ff88', fontStyle: 'bold', fontFamily: 'system-ui',
+    }).setOrigin(0.5).setDepth(20)
     this.tweens.add({
-      targets: flash, y: flash.y - 65, alpha: 0, duration: 550, ease: 'Power2',
+      targets: flash, y: flash.y - 70, alpha: 0, duration: 600, ease: 'Power2',
       onComplete: () => flash.destroy(),
     })
   }
 
-  resetBall() {
-    this.isInFlight = false
-    this.ballBody.allowGravity = false
-    this.ballBody.setVelocity(0, 0)
-    this.ball.setPosition(this.ballStartX, this.ballStartY)
+  // Called from Game.tsx timer
+  onTimerTick(timeLeft: number) {
+    this.timeLeft = timeLeft
+    if (timeLeft <= 5 && timeLeft > 0) {
+      playBeep(timeLeft <= 2 ? 1100 : 880)
+    }
+    if (timeLeft === 0) {
+      playFinalBuzzer()
+    }
   }
 
   disableInput() {
+    this.isDragging = false
+    this.trajectoryGfx.clear()
     this.input.off('pointerdown', this.onDown, this)
     this.input.off('pointermove', this.onMove, this)
     this.input.off('pointerup', this.onUp, this)
-    this.resetBall()
+    // Clear all in-flight balls except current
+    this.ballGroup.getChildren().forEach((b) => {
+      const ball = b as Phaser.GameObjects.Image
+      if (ball !== this.currentBall) {
+        this.ballStates.delete(Number(ball.name))
+        ball.destroy()
+      }
+    })
+    const body = this.currentBall?.body as Phaser.Physics.Arcade.Body
+    if (body) { body.setVelocity(0, 0); body.allowGravity = false }
+    this.currentBall?.setPosition(this.ballStartX, this.ballStartY)
   }
 
   enableInput() {
+    this.urgentBeepsLeft = 5
     this.input.on('pointerdown', this.onDown, this)
     this.input.on('pointermove', this.onMove, this)
     this.input.on('pointerup', this.onUp, this)
   }
 
   update() {
-    if (!this.isInFlight) return
     const W = this.scale.width
     const H = this.scale.height
-    if (this.ball.y < this.hoopY - 15) this.passedAboveRim = true
-    if (this.ball.x < -80 || this.ball.x > W + 80 || this.ball.y > H + 80) {
-      this.resetBall()
-    }
+
+    this.ballGroup.getChildren().forEach((b) => {
+      const ball = b as Phaser.GameObjects.Image
+      if (ball === this.currentBall) return // don't clean up current
+
+      const body = ball.body as Phaser.Physics.Arcade.Body
+      const id = Number(ball.name)
+      const state = this.ballStates.get(id)
+
+      if (state && ball.y < this.hoopY - 15) state.passedAboveRim = true
+
+      // Miss — play bounce when ball exits screen bottom
+      if (ball.y > H + 60) {
+        playBounce()
+        this.ballStates.delete(id)
+        ball.destroy()
+      } else if (ball.x < -80 || ball.x > W + 80) {
+        this.ballStates.delete(id)
+        ball.destroy()
+      }
+    })
   }
 }

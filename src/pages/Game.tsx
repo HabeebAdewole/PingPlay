@@ -5,6 +5,7 @@ import PhaserGame from '../components/PhaserGame'
 import GameHUD from '../components/GameHUD'
 import { socket } from '../socket'
 import { BasketballScene } from '../scenes/BasketballScene'
+import { initAudio } from '../utils/audio'
 
 const SETS = 2
 const SET_DURATION = 30
@@ -40,12 +41,12 @@ export default function Game() {
     if (phase !== 'playing') return
     const interval = setInterval(() => {
       setTimeLeft((t) => {
-        if (t <= 1) {
-          clearInterval(interval)
-          endSet()
-          return 0
-        }
-        return t - 1
+        const next = t <= 1 ? 0 : t - 1
+        // Forward tick to Phaser scene for beeps
+        const scene = gameRef.current?.scene.getScene('BasketballScene') as BasketballScene | undefined
+        scene?.onTimerTick(next)
+        if (next === 0) { clearInterval(interval); endSet() }
+        return next
       })
     }, 1000)
     return () => clearInterval(interval)
@@ -55,6 +56,13 @@ export default function Game() {
   useEffect(() => {
     const t = setTimeout(() => setShowSwipeHint(false), 3000)
     return () => clearTimeout(t)
+  }, [])
+
+  // Unlock AudioContext on first touch
+  useEffect(() => {
+    const unlock = () => { initAudio(); window.removeEventListener('pointerdown', unlock) }
+    window.addEventListener('pointerdown', unlock)
+    return () => window.removeEventListener('pointerdown', unlock)
   }, [])
 
   const handleBasket = useCallback(() => {
