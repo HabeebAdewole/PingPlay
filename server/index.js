@@ -19,8 +19,9 @@ const rooms = {}
 
 app.post('/room/create', (req, res) => {
   const roomId = nanoid(6).toUpperCase()
-  rooms[roomId] = { players: [], status: 'waiting' }
-  res.json({ roomId })
+  const gameType = req.body?.gameType || 'basketball'
+  rooms[roomId] = { players: [], status: 'waiting', gameType }
+  res.json({ roomId, gameType })
 })
 
 app.get('/room/:roomId', (req, res) => {

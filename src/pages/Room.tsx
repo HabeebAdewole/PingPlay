@@ -53,10 +53,12 @@ export default function Room() {
   }
 
   useEffect(() => {
-    socket.on('room_update', (updatedRoom: Room) => {
+    socket.on('room_update', (updatedRoom: Room & { gameType?: string }) => {
       setRoom(updatedRoom)
       if (updatedRoom.status === 'playing') {
-        navigate(`/room/${roomId}/game`)
+        const gameType = updatedRoom.gameType || sessionStorage.getItem('gameType') || 'basketball'
+        const dest = gameType === 'archery' ? `/room/${roomId}/archery` : `/room/${roomId}/game`
+        navigate(dest)
       }
     })
 
