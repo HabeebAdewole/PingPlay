@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
+import { saveScore } from '../lib/saveScore'
 import type Phaser from 'phaser'
 import PhaserGame from '../components/PhaserGame'
 import GameHUD from '../components/GameHUD'
@@ -78,6 +79,8 @@ export default function BotBasketballGame() {
       .then((bs) => {
         setBotScore(bs)
         setPhase('done')
+        const playerName = sessionStorage.getItem('playerName') || 'Player'
+        saveScore({ player_name: playerName, game_type: 'basketball', score: scoreRef.current, mode: 'bot' })
         // Adaptive: save next difficulty to sessionStorage
         const next = bs > scoreRef.current
           ? difficulty === 'easy' ? 'easy' : difficulty === 'medium' ? 'easy' : 'medium'
@@ -131,13 +134,17 @@ export default function BotBasketballGame() {
         <p className="text-white/30 text-xs mb-8">
           {iWin ? 'Bot difficulty will increase next game' : !tie ? 'Bot difficulty will decrease next game' : ''}
         </p>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap justify-center">
           <button onClick={() => navigate('/play/basketball?difficulty=' + (sessionStorage.getItem('botDifficulty') || difficulty))}
-            className="bg-orange-600 hover:bg-orange-500 text-white font-semibold rounded-2xl px-6 py-3 transition-colors">
+            className="bg-orange-600 hover:bg-orange-500 text-white font-semibold rounded-2xl px-5 py-3 transition-colors">
             Play Again
           </button>
+          <button onClick={() => navigate('/leaderboard')}
+            className="bg-white/10 hover:bg-white/20 text-white font-semibold rounded-2xl px-5 py-3 transition-colors">
+            Leaderboard
+          </button>
           <button onClick={() => navigate('/')}
-            className="bg-white/10 hover:bg-white/20 text-white font-semibold rounded-2xl px-6 py-3 transition-colors">
+            className="bg-white/10 hover:bg-white/20 text-white font-semibold rounded-2xl px-5 py-3 transition-colors">
             Home
           </button>
         </div>

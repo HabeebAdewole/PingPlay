@@ -48,6 +48,10 @@ export default function Home() {
       <div className="text-center">
         <h1 className="text-5xl font-black mb-1 tracking-tight">PingPlay</h1>
         <p className="text-white/40 tracking-wide">Challenge your friends to mini-games</p>
+        <button onClick={() => navigate('/leaderboard')}
+          className="mt-3 text-indigo-400/70 hover:text-indigo-400 text-xs tracking-widest uppercase transition-colors">
+          🏆 Leaderboard
+        </button>
       </div>
 
       {/* Mode toggle */}

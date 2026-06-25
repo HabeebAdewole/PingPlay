@@ -5,6 +5,7 @@ import Game from './pages/Game'
 import ArcheryGame from './pages/ArcheryGame'
 import BotBasketballGame from './pages/BotBasketballGame'
 import BotArcheryGame from './pages/BotArcheryGame'
+import Leaderboard from './pages/Leaderboard'
 import './index.css'
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
         <Route path="/room/:roomId/archery" element={<ArcheryGame />} />
         <Route path="/play/basketball" element={<BotBasketballGame />} />
         <Route path="/play/archery" element={<BotArcheryGame />} />
+        <Route path="/leaderboard" element={<Leaderboard />} />
       </Routes>
     </BrowserRouter>
   )

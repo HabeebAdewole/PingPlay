@@ -6,6 +6,7 @@ import GameHUD from '../components/GameHUD'
 import { socket } from '../socket'
 import { BasketballScene } from '../scenes/BasketballScene'
 import { initAudio } from '../utils/audio'
+import { saveScore } from '../lib/saveScore'
 
 const SETS = 2
 const SET_DURATION = 30
@@ -84,10 +85,13 @@ export default function Game() {
     socket.once('opponent_set_score', ({ set: oppSet, score: oppScore }: { set: number; score: number }) => {
       setSetScores((prev) => prev.map((s) => s.set === oppSet ? { ...s, theirs: oppScore } : s))
       if (oppSet === SETS) {
-        setFinalMine(scoreRef.current)
+        const myFinal = scoreRef.current
+        setFinalMine(myFinal)
         setFinalTheirs(oppScore)
         setGameOver(true)
         setPhase('done')
+        const playerName = sessionStorage.getItem('playerName') || 'Anonymous'
+        saveScore({ player_name: playerName, game_type: 'basketball', score: myFinal, mode: 'multiplayer' })
       }
     })
 
@@ -109,6 +113,7 @@ export default function Game() {
   }
 
   function startNextSet() {
+    if (currentSetRef.current >= SETS) return
     currentSetRef.current += 1
     scoreRef.current = 0
     setScore(0)
@@ -138,10 +143,16 @@ export default function Game() {
             </div>
           ))}
         </div>
-        <button onClick={() => navigate('/')}
-          className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-2xl px-8 py-4 transition-colors">
-          Play Again
-        </button>
+        <div className="flex gap-3">
+          <button onClick={() => navigate('/')}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-2xl px-6 py-4 transition-colors">
+            Play Again
+          </button>
+          <button onClick={() => navigate('/leaderboard')}
+            className="bg-white/10 hover:bg-white/20 text-white font-semibold rounded-2xl px-6 py-4 transition-colors">
+            Leaderboard
+          </button>
+        </div>
       </div>
     )
   }

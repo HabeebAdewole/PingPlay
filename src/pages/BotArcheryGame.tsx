@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
+import { saveScore } from '../lib/saveScore'
 import type Phaser from 'phaser'
 import ArcheryPhaserGame from '../components/ArcheryPhaserGame'
 import ArcheryHUD from '../components/ArcheryHUD'
@@ -59,6 +60,8 @@ export default function BotArcheryGame() {
       .then(({ bot_score, breakdown }) => {
         setBotResult({ score: bot_score, breakdown })
         setHudPhase('done')
+        const playerName = sessionStorage.getItem('playerName') || 'Player'
+        saveScore({ player_name: playerName, game_type: 'archery', score: total, mode: 'bot' })
         const next = bot_score > total
           ? difficulty === 'easy' ? 'easy' : difficulty === 'medium' ? 'easy' : 'medium'
           : total > bot_score * 1.25
@@ -102,13 +105,17 @@ export default function BotArcheryGame() {
         <p className="text-white/30 text-xs mb-8">
           {iWin ? 'Bot difficulty will increase next game' : !tie ? 'Bot difficulty will decrease next game' : ''}
         </p>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap justify-center">
           <button onClick={() => navigate('/play/archery?difficulty=' + (sessionStorage.getItem('botDifficulty') || difficulty))}
-            className="bg-green-700 hover:bg-green-600 text-white font-semibold rounded-2xl px-6 py-3 transition-colors">
+            className="bg-green-700 hover:bg-green-600 text-white font-semibold rounded-2xl px-5 py-3 transition-colors">
             Play Again
           </button>
+          <button onClick={() => navigate('/leaderboard')}
+            className="bg-white/10 hover:bg-white/20 text-white font-semibold rounded-2xl px-5 py-3 transition-colors">
+            Leaderboard
+          </button>
           <button onClick={() => navigate('/')}
-            className="bg-white/10 hover:bg-white/20 text-white font-semibold rounded-2xl px-6 py-3 transition-colors">
+            className="bg-white/10 hover:bg-white/20 text-white font-semibold rounded-2xl px-5 py-3 transition-colors">
             Home
           </button>
         </div>

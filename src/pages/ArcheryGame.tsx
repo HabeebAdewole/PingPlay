@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { saveScore } from '../lib/saveScore'
 import type Phaser from 'phaser'
 import ArcheryPhaserGame from '../components/ArcheryPhaserGame'
 import ArcheryHUD from '../components/ArcheryHUD'
@@ -53,6 +54,8 @@ export default function ArcheryGame() {
     setHudPhase('waiting')
 
     socket.emit('set_score', { roomId, set: 1, score: total })
+    const playerName = sessionStorage.getItem('playerName') || 'Anonymous'
+    saveScore({ player_name: playerName, game_type: 'archery', score: total, mode: 'multiplayer' })
 
     socket.once('opponent_set_score', ({ score: oppScore }: { score: number }) => {
       setFinalTheirs(oppScore)
@@ -89,10 +92,16 @@ export default function ArcheryGame() {
             <span>Max {TOTAL_ARROWS * 10} pts</span>
           </div>
         </div>
-        <button onClick={() => navigate('/')}
-          className="bg-green-700 hover:bg-green-600 text-white font-semibold rounded-2xl px-8 py-4 transition-colors">
-          Play Again
-        </button>
+        <div className="flex gap-3">
+          <button onClick={() => navigate('/')}
+            className="bg-green-700 hover:bg-green-600 text-white font-semibold rounded-2xl px-6 py-4 transition-colors">
+            Play Again
+          </button>
+          <button onClick={() => navigate('/leaderboard')}
+            className="bg-white/10 hover:bg-white/20 text-white font-semibold rounded-2xl px-6 py-4 transition-colors">
+            Leaderboard
+          </button>
+        </div>
       </div>
     )
   }
